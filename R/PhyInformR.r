@@ -1158,6 +1158,8 @@ allmodel.signal.noise<-function(a,b,c,d,e,f,internode,Pi_T,Pi_C,Pi_A,Pi_G, rate_
 	print(paste0("Probablility Correct: ",prcortree$value))
 	print(paste0("Probability Incorrect: ",princtree$value))
 	print(paste0("Probability Polytomy: ",prpolytomy$value))
+	rbind(princtree$value, prpolytomy$value, prcortree$value)->output
+	return(output)
 }
 
 
