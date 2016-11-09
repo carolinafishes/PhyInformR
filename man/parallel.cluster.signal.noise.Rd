@@ -8,7 +8,9 @@ Quantify Quartet Resolution Probabilities Using 2012 Formulation and MCMC approa
 Quantify Quartet Resolution Probabilities (QIRP, QIHP, and QIPP) Using 2012 Formulation and MCMC approach, outputs results to file
 }
 \usage{
-parallel.cluster.signal.noise(t, t0, rateVector, nsims, s, filename, imagename, image = "TRUE")
+parallel.cluster.signal.noise(t, t0, 
+rateVector, nsims, s, filename, imagename, 
+image = "TRUE")
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -56,7 +58,8 @@ library("doParallel")
 #Cores must be less than or equal to those had on your machine.
 registerDoParallel(cores=2)
 as.matrix(rag1)->rr
-parallel.cluster.signal.noise(100, 2, rr, 1000, 3, filename="output_values", #imagename="output_graphic", image = "TRUE") 
+parallel.cluster.signal.noise(100, 2, rr, 1000, 3,
+filename="output_values", imagename="output_graphic", image = "TRUE") 
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

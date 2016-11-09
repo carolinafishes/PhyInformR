@@ -1,5 +1,5 @@
-\name{plot.posterior}
-\alias{plot.posterior}
+\name{plotPosterior}
+\alias{plotPosterior}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 A function to visualize outputs of QIRP, QIHP, and QIPP computed across a distribution of trees
@@ -8,14 +8,14 @@ A function to visualize outputs of QIRP, QIHP, and QIPP computed across a distri
 A function to visualize outputs of QIRP, QIHP, and QIPP computed across a distribution of trees
 }
 \usage{
-plot.posterior(final, plot = "QIPs")
+plotPosterior(final, plotType = "QIPs")
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{final}{
 output from su.bayes
 }
-  \item{plot}{
+  \item{plotType}{
 type of plot, can be "QIPs" or "violin"
 }
 }
@@ -34,8 +34,10 @@ A. Dornburg
 \examples{
 library("ape")
 read.tree(system.file("extdata","polypterus_trees.phy",package="PhyInformR"))->trees
+trees<-trees[1:10]
 as.matrix(rag1)->rates
-quart<-c("Polypterus_congricus", "Polypterus_bichir", "Polypterus_ansorgii", "Polypterus_endlicheri")
+quart<-c("Polypterus_congicus", "Polypterus_bichir", 
+"Polypterus_ansorgii", "Polypterus_endlicheri")
 a<-1
 b<-1
 c<-1
@@ -47,7 +49,7 @@ Pi_C<-.25
 Pi_A<-.25
 Pi_G<-.25
 su.bayes(a,b,c,d,e,f, Pi_T, Pi_C, Pi_A, Pi_G, rates, quart, trees)->final
-plot.posterior(final, plot='violin')
+plotPosterior(final, plotType='violin')
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

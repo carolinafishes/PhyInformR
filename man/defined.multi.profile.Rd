@@ -47,7 +47,7 @@ as.matrix(Prates)->rates
 lower<-c(0, 1594)
 upper<-c(1595,2787)
 breaks<-cbind(lower,upper)
-#multi.profile(rates, tree, breaks, values = "off")
+defined.multi.profile(rates, tree, breaks, values = "off")
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

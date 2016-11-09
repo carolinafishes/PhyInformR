@@ -53,7 +53,9 @@ A. Dornburg
 as.matrix(rag1)->rr
 Approximator(100,0.5,rr,3)
 
-cluster.signal.noise(100, 2, rr, 1000, 3, filename="output_values", imagename="output_graphic", image = "TRUE") 
+cluster.signal.noise(100, 2, rr, 1000,
+3, filename="output_values", 
+imagename="output_graphic", image = "TRUE") 
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

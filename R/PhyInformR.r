@@ -24,7 +24,7 @@ registerDoParallel(cores=8)
 site.summer<-function(rate.vector,time)
 {
 	length(rate.vector)->calculation.length
-		at.site<-matrix(nrow=calculation.length)
+		at.site<-matrix(ncol=calculation.length)
 for(i in 1:calculation.length)
 		
 
@@ -108,7 +108,7 @@ inform.profile.generator2<-function(use.rates,tree)
 inform.at.time->close
 return(close)
 }
-
+#' @export
 defined.multi.profile<-function(rate.vector,tree,breaks)
 {
 	
@@ -140,7 +140,7 @@ rbind(sorted.btimes,close)->closer
 return(closer)
 }
 
-
+#' @export
 Approximator<-function(t,t0,rateVector,s)	
 {	
 rateVector->rv
@@ -263,6 +263,7 @@ labels->names(values)
 return(prcortree)
 }
 
+#' @export
 space.maker<-function(rateVector,t,s)
 {
 	t/20->by.this
@@ -276,6 +277,7 @@ space.maker<-function(rateVector,t,s)
 	return(rowspace)
 }
 
+#' @export
 space.maker.narrow<-function(rateVector,t,s)
 {
 	t/2->halft
@@ -316,6 +318,7 @@ return(close)
 }
 
 ####This part will get all the points with the rate vector already computed from other functions
+#' @export
 informativeness.profile<-function(rate.vector, tree, codon="FALSE", values="display")
 {
   
@@ -336,7 +339,7 @@ uppery/10->by.y
 
 yy <-predict(interpSpline(sorted.btimes, inform.at.time))
 mat<- matrix(c(1:2),nrow=2,ncol=1)
-layout(mat=mat,height=c(250,300))
+layout(mat=mat,heights=c(250,300))
 par(mar=c(0,0,0,0), oma=c(5,5,1,1))
 #par(bg = "white")   
 #split.screen(c(2,1))
@@ -387,7 +390,7 @@ round(max(close2),digits=2)->uppery
 uppery/10->by.y
 
 mat<- matrix(c(1:2),nrow=2,ncol=1)
-layout(mat=mat,height=c(250,300))
+layout(mat=mat,heights=c(250,300))
 par(mar=c(0,0,0,0), oma=c(5,5,1,1))
 #par(bg = "white")   
 #split.screen(c(2,1))
@@ -428,7 +431,7 @@ return(closer)} else if (values=="off"){
 }
 
 ####For user defined informativeness profiles, note that this has a maximum limit of X since the plot will become unreadable
-
+#' @export
 multi.profile<-function(rate.vector,tree,breaks,values="display")
 {
 	length(rate.vector)->n
@@ -465,7 +468,7 @@ uppery/10->by.y
 
 
 mat<- matrix(c(1:2),nrow=2,ncol=1)
-layout(mat=mat,height=c(250,300))
+layout(mat=mat,heights=c(250,300))
 par(mar=c(0,0,0,0), oma=c(5,5,1,1))
 #par(bg = "white")   
 #split.screen(c(2,1))
@@ -518,7 +521,7 @@ if (values=="display"){
 
 
 ####For user defined informativeness profiles, note that this has a maximum limit of X since the plot will become unreadable
-
+#' @export
 defined.multi.profile<-function(rate.vector,tree,breaks,values="display")
 {
 	length(rate.vector)->n
@@ -555,7 +558,7 @@ uppery/10->by.y
 
 
 mat<- matrix(c(1:2),nrow=2,ncol=1)
-layout(mat=mat,height=c(250,300))
+layout(mat=mat,heights=c(250,300))
 par(mar=c(0,0,0,0), oma=c(5,5,1,1))
 #par(bg = "white")   
 #split.screen(c(2,1))
@@ -611,6 +614,7 @@ return(dist)
 }
 
 ###Plot the space
+#' @export
 PlotTreeSI<-function(tree,ratevector,s)
 {{
 #First get x axis
@@ -630,7 +634,7 @@ for (i in 1:length(parentn))
 	probs[,3]->incorrect
 	
 	mat<- matrix(c(1:2),nrow=2,ncol=1)
-layout(mat=mat,height=c(250,300))
+layout(mat=mat,heights=c(250,300))
 par(mar=c(0,0,0,0), oma=c(5,5,1,1))
 par(plt=c(0,0.9,0.2,0.99))
 plot(tree,show.tip.label=FALSE,direction="l")
@@ -648,7 +652,7 @@ par(plt=c(0.027,0.9,0,0.99))
 }
 	resetGraph(reset.mf=TRUE)
 }
-
+#' @export
 Plot.Another.TreeSI<-function(tree,ratevector,s,color,type)
 {
 #First get x axis
@@ -736,7 +740,7 @@ get.ind.sites<-function(rate.output,breaks)
 
 #to run and log output to cluster, note image name and filename cannot be identical!!!!
 ###Sample Input: cluster.signal.noise(86, 91, cytBM, 10, filename="tarsius", imagename="tarsius.pdf")
-	
+#' @export	
 cluster.signal.noise<-function(t, t0, rateVector, nsims,s, filename,imagename, image="FALSE")
 {
 	signal.noise.multimix(t,t0,rateVector, nsims,s)->currentprobdist
@@ -780,9 +784,9 @@ parallel.multimixA<-function (t,t0, ratevector, nsims,s){
 	ratevector->rv
 	n<-length(rv)
 	matrix(nrow=n*2+1, ncol=nsims)->shrill.mess
-foreach(i=1:nsims, .combine=cbind)%dopar%
+foreach(q=1:nsims, .combine=cbind)%dopar%
 {
-CurrentProbabilityDistribution(ratevector, t, t0,s)->shrill.mess[,i]
+CurrentProbabilityDistribution(ratevector, t, t0,s)->shrill.mess[,q]
 
 
 }	
@@ -798,6 +802,7 @@ return(currentprobdistro)
 	
 }
 #to run and log output to cluster, note image name and filename cannot be identical!!!!
+#' @export
 parallel.cluster.signal.noise<-function(t, t0, rateVector, nsims,s, filename,imagename, image="TRUE")
 {
 	parallel.multimixfull(t,t0,rateVector, nsims,s)->currentprobdist
@@ -992,7 +997,7 @@ pdf(file=filename, height=8,width=8)
 	lines(correct.x, blue.plot, type="h", col="blue", xaxt="n", lwd=12)}
 	dev.off()
 	}}
-
+#' @export
 allmodel.signal.noise<-function(a,b,c,d,e,f,internode,Pi_T,Pi_C,Pi_A,Pi_G, rate_vector)
 {
 	rate_vector->rr
@@ -1196,7 +1201,7 @@ bayes.signal.prep<-function(quart,tree){
 		which(names(newee)==quart[1])->first
 		which(names(newee)==quart[2])->second
 		which(names(newee)==quart[3])->third
-		hich(names(newee)==quart[4])->fourth
+		which(names(newee)==quart[4])->fourth
 		c(newee[first], newee[second], newee[third], newee[fourth], internode)->vector	
 	}	
 	
@@ -1208,51 +1213,58 @@ bayes.signal.prep<-function(quart,tree){
 ##these are the same inputs as the allmodel.signal.noise, users will use this and save the output for plotting
 post.su<-function(a,b,c,d,e,f,Pi_T,Pi_C,Pi_A,Pi_G, rate_vector,quart,tree)
 {
-
-###first get your internodes
-matrix(ncol=5)->stored_ints
-for (i in 1:length(tree))
-{
-	bayes.signal.prep(quart,tree[[i]])-> temp
-	rbind(stored_ints,temp)->stored_ints
-	
-}
-stored_ints[2:length(stored_ints[,1]),]->stored_ints
-length(stored_ints[,1])->loop.length
-matrix(ncol=length(stored_ints[,1]),nrow=3)-> quart.probs
-foreach(i=1:loop.length, .combine=cbind)%dopar%
-#for (i in 2:length(stored_ints[,1]))
-{
-	allmodel.signal.noise (a,b,c,d,e,f, stored_ints[i,],Pi_T,Pi_C,Pi_A,Pi_G, rate_vector)-> quart.probs[,i]
-#rbind(quart.probs,temp2)->quart.probs[i,]
-	#temp2->quart.probs[i,]
-}
-#t(quart.probs)->qp2
-#cbind(qp2,stored_ints)->final
-#return(qp2)	
-	
+  
+  ###first get your internodes
+  matrix(ncol=5)->stored_ints
+  for (i in 1:length(tree))
+  {
+    bayes.signal.prep(quart,tree[[i]])-> temp
+    rbind(stored_ints,temp)->stored_ints
+    
+  }
+  stored_ints[2:length(stored_ints[,1]),]->stored_ints
+  length(stored_ints[,1])->loop.length
+  matrix(ncol=length(stored_ints[,1]),nrow=3)-> quart.probs
+  #foreach(i=1:loop.length, .combine=cbind)%dopar%
+  for (i in 2:length(stored_ints[,1]))
+  {
+    allmodel.signal.noise (a,b,c,d,e,f, stored_ints[i,],Pi_T,Pi_C,Pi_A,Pi_G, rate_vector)-> temp2 #quart.probs[,i]
+    #rbind(quart.probs,temp2)->quart.probs#[i,]
+    temp2->quart.probs[,i]
+  }
+  t(quart.probs)->qp2
+  cbind(qp2,stored_ints)->final
+  return(qp2)	
+  
 }
 
 ##### User function. foreach does not work with downstream manipulations of objects well, so this takes the output of the core post.su function and adds the internode lengths back to have one nice result object
+#' @export
 su.bayes<-function(a,b,c,d,e,f,Pi_T,Pi_C,Pi_A,Pi_G, rate_vector,quart,tree){
-	post.su(a,b,c,d,e,f,Pi_T,Pi_C,Pi_A,Pi_G, rate_vector,quart,tree)->final
-	t(final)->qp2
-	matrix(ncol=5)->stored_ints
-for (i in 1:length(tree))
-{
-	bayes.signal.prep(quart,tree[[i]])-> temp
-	rbind(stored_ints,temp)->stored_ints
-	}
-cbind(qp2,stored_ints[2:length(stored_ints[,1]),])->final.result
-return(final.result)	
-
+  post.su(a,b,c,d,e,f,Pi_T,Pi_C,Pi_A,Pi_G, rate_vector,quart,tree)->final
+  t(final)->qp2
+  matrix(ncol=5)->stored_ints
+  for (i in 1:length(tree))
+  {
+    bayes.signal.prep(quart,tree[[i]])-> temp
+    rbind(stored_ints,temp)->stored_ints
+  }
+  print(qp2)
+  print(stored_ints)
+  cbind(t(qp2),stored_ints[2:length(stored_ints[,1]),])->final.result
+  return(final.result)	
+  
 }
 
 
 ###This will either plot the Quartet internode probs with their internode, or else the violin plots o look at density another way
-plot.posterior<-function(final, plot="QIPs")
+#' @export
+plotPosterior<-function(final, plotType="QIPs")
 {
 as.data.frame(final)->final2
+##Experimental
+final2<-final2[2:nrow(final2),]
+##  
 dim(final)->ll
 ll[1]->up
 final2[2:up,]->final22
@@ -1261,12 +1273,12 @@ y1    <- as.numeric(as.character(final22[,3]))
 y2    <- as.numeric(as.character(final22[,2])) #polytomy
 y3    <- as.numeric(as.character(final22[,1]))
 
-if (plot=="QIPs")	{
+if (plotType=="QIPs")	{
 p1<-ggplot(final22,aes(x=x,y=y1)) + stat_binhex(colour="white",na.rm=TRUE)+ xlab("internode length") + ylab("QIRP") + scale_fill_gradientn(colours=c("green1","red"),name = "Frequency",na.value=NA)+ theme_bw()
 p2<-ggplot(final22,aes(x=x,y=y2)) + stat_binhex(colour="white",na.rm=TRUE)+ xlab("internode length") + ylab("QIPP") + scale_fill_gradientn(colours=c("green1","red"),name = "Frequency",na.value=NA)+ theme_bw()
 p3<-ggplot(final22,aes(x=x,y=y3)) + stat_binhex(colour="white",na.rm=TRUE)+ xlab("internode length") + ylab("QIHP") + scale_fill_gradientn(colours=c("green1","red"),name = "Frequency",na.value=NA)+ theme_bw()
 grid.arrange(p1, p2, p3, ncol=1, nrow =3)
-} else if (plot=="violin"){
+} else if (plotType=="violin"){
 	c(y1,y2,y3)->stacks
 	length(y1)->set
 	rep("QIRP",set)->Qirp
@@ -1281,7 +1293,9 @@ grid.arrange(p1, p2, p3, ncol=1, nrow =3)
 								as.data.frame(data)->data
 								as.numeric(as.character(data[,1]))->data[,1]
 								as.numeric(as.character(data[,2]))->data[,2]
-			p<-ggplot(data, aes(x= Analysis, y= Probability, fill= Analysis)) 
+								Analysis<-data[,"Analysis"]
+								Probability<-data[,"Probability"]
+			p<-ggplot(data, aes(x= Analysis, y= Probability, fill=Analysis)) 
 				p + geom_violin(trim=FALSE)+scale_fill_manual(values=c("firebrick","deepskyblue3","seagreen")) + geom_boxplot(width=0.1, fill= "aliceblue")		
 					
 }}

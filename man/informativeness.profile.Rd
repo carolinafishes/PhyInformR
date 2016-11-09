@@ -25,9 +25,6 @@ True or false: whether to partition a given site rate matrix by codon
 'display' or 'off': whether to return PI values for each time
 }
 }
-\details{
-
-}
 \value{
 Graphical display of phylogenetic informativeness
 }

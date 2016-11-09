@@ -25,23 +25,11 @@ bounds for each profile
 'display' or 'off': whether to return PI values for each time
 }
 }
-\value{
-Graphical display of phylogenetic informativeness
-}
 \references{
 Townsend, J. P. “Profiling Phylogenetic Informativeness” Systematic biology 56, no. 2 (2007): 222–231.
 }
 \author{
-%%  ~~who you are~~
-}
-\note{
-%%  ~~further notes~~
-}
-
-%% ~Make other sections like Warning with \section{Warning }{....} ~
-
-\seealso{
-%% ~~objects to See Also as \code{\link{help}}, ~~~
+Alex Dornburg
 }
 \examples{
 library("ape")

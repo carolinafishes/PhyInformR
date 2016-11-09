@@ -66,9 +66,11 @@ Su, Z. and Townsend, J. P. “Utility of Characters Evolving at Diverse Rates of
 
 \examples{
 library("ape")
-#read.tree(system.file("extdata","polypterus_trees.phy",package="PhyInformR"))->trees
+read.tree(system.file("extdata","polypterus_trees.phy",package="PhyInformR"))->trees
+trees<-trees[1:10]
 as.matrix(rag1)->rates
-#quart<-c("Polypterus_congricus", "Polypterus_bichir", "Polypterus_ansorgii", "Polypterus_endlicheri")
+quart<-c("Polypterus_congicus", "Polypterus_bichir", 
+"Polypterus_ansorgii", "Polypterus_endlicheri")
 a<-1
 b<-1
 c<-1
