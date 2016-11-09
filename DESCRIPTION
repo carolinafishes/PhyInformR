@@ -14,7 +14,7 @@ Imports: phytools, splines, gplots, RColorBrewer, foreach, iterators,
         geiger, doParallel, gridExtra, hexbin, PBSmodelling, ape,
         ggplot2
 NeedsCompilation: no
-Packaged: 2016-11-09 14:34:37 UTC; nick
+Packaged: 2016-11-09 19:49:12 UTC; nick
 Author: Alex Dornburg [aut, cre, cph],
   J. Nick Fisk [aut, cph],
   Jules Tamagnan [aut, cph],

@@ -1158,8 +1158,7 @@ allmodel.signal.noise<-function(a,b,c,d,e,f,internode,Pi_T,Pi_C,Pi_A,Pi_G, rate_
 	print(paste0("Probablility Correct: ",prcortree$value))
 	print(paste0("Probability Incorrect: ",princtree$value))
 	print(paste0("Probability Polytomy: ",prpolytomy$value))
-	rbind(princtree$value, prpolytomy$value, prcortree$value)->output
-	return(output)
+	return(c(princtree$value,prpolytomy$value,prcortree$value))
 }
 
 
@@ -1251,8 +1250,6 @@ su.bayes<-function(a,b,c,d,e,f,Pi_T,Pi_C,Pi_A,Pi_G, rate_vector,quart,tree){
     bayes.signal.prep(quart,tree[[i]])-> temp
     rbind(stored_ints,temp)->stored_ints
   }
-  print(qp2)
-  print(stored_ints)
   cbind(t(qp2),stored_ints[2:length(stored_ints[,1]),])->final.result
   return(final.result)	
   
