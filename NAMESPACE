@@ -1,4 +1,3 @@
-
 export(Approximator)
 export(Plot.Another.TreeSI)
 export(PlotTreeSI)
@@ -12,19 +11,37 @@ export(plotPosterior)
 export(space.maker)
 export(space.maker.narrow)
 export(su.bayes)
-import("stats")
-import("graphics")
-import("parallel")
-import("ape")
-import("ggplot2")
-import("iterators")
-import("splines")
-import("PBSmodelling")
-import("hexbin")
-import("geiger")
-import("gridExtra")
-import("RColorBrewer")
-import("foreach")
-import("doParallel")
-importFrom("grDevices", "dev.off", "pdf")
-importFrom("utils", "combn", "write.table")
+
+## ---- New HTML / interactive exports (Yide update) ----
+export(informativeness.profile_html)
+export(informativeness.profile_multi_html)
+export(tree_signal_noise_multi_html)
+
+import(stats)
+import(graphics)
+import(parallel)
+import(ape)
+import(ggplot2)
+import(iterators)
+import(splines)
+import(PBSmodelling)
+import(hexbin)
+import(geiger)
+import(gridExtra)
+import(RColorBrewer)
+import(foreach)
+import(doParallel)
+
+## ---- New imports required by HTML functions ----
+importFrom(plotly, plot_ly, add_lines, add_trace, layout, subplot, config)
+importFrom(htmlwidgets, onRender, saveWidget, prependContent)
+importFrom(htmltools, tags, HTML)
+importFrom(DT, datatable)
+importFrom(jsonlite, toJSON)
+
+## ---- Utilities used in your code ----
+importFrom(magrittr, "%>%")
+importFrom(utils, modifyList, combn, write.table)
+
+importFrom(grDevices, dev.off, pdf)
+
