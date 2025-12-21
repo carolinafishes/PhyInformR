@@ -1,22 +1,46 @@
 Package: PhyInformR
 Type: Package
-Title: Rapid Calculation of Phylogenetic Information Content
+Title: Rapid Calculation of Phylogenetic Informativeness
 Version: 2.0
 Date: 2025-12-20
 Authors@R: c(
-  person("Alex", "Dornburg", email="alex.dornburg@naturalsciences.org", role=c("aut","cre","cph")),
-  person("J. Nick", "Fisk", email="jnf3769@rit.edu", role=c("aut","cph")),
-  person("Jules", "Tamagnan", email="jules.tamagnan@yale.edu", role=c("aut","cph")),
-  person("Jeffrey","Townsend", email="jeffrey.townsend@yale.edu", role=c("aut","cph")),
-  person("Yide", "Jin", role=c("ctb"))
+  person("Alex", "Dornburg", email = "alex.dornburg@naturalsciences.org", role = c("aut", "cre", "cph")),
+  person("J. Nick", "Fisk", email = "jnf3769@rit.edu", role = c("aut", "cph")),
+  person("Jules", "Tamagnan", email = "jules.tamagnan@yale.edu", role = c("aut", "cph")),
+  person("Jeffrey", "Townsend", email = "jeffrey.townsend@yale.edu", role = c("aut", "cph")),
+  person("Yide", "Jin", email = "yide.jin@yale.edu", role = c("ctb"))
 )
 Maintainer: Alex Dornburg <alex.dornburg@naturalsciences.org>
-Description: Performs rapid calculation of phylogenetic information content using advances in phylogenetic informativeness theory. These advances include modifications that incorporate uneven branch lengths and models of nucleotide substitution to assess the phylogenetic utility of datasets or dataset partitions. PhyInformR provides tools for data visualization and routines optimized for rapid statistical calculations, including approaches using Bayesian posterior distributions and parallel processing. Users can apply these approaches to screen datasets for phylogenetic/genomic information content.
+Description: Performs rapid calculation of phylogenetic informativeness using
+  advances in phylogenetic informativeness theory. These include modifications
+  that incorporate uneven branch lengths and models of nucleotide substitution
+  to assess the phylogenetic utility of datasets or dataset partitions.
+  PhyInformR provides tools for data visualization and routines optimized for
+  rapid statistical calculations, including approaches using Bayesian posterior
+  distributions and parallel processing. Users can apply these approaches to
+  screen datasets for phylogenetic and genomic information content.
 License: GPL-3
 Depends: R (>= 3.3.0)
 Encoding: UTF-8
 LazyData: true
-Imports: phytools, splines, gplots, RColorBrewer, foreach, iterators,
-        geiger, doParallel, gridExtra, hexbin, PBSmodelling, ape,
-        ggplot2, plotly, htmlwidgets, htmltools, DT, jsonlite
+Imports:
+  phytools,
+  splines,
+  gplots,
+  RColorBrewer,
+  foreach,
+  iterators,
+  geiger,
+  doParallel,
+  gridExtra,
+  hexbin,
+  PBSmodelling,
+  ape,
+  ggplot2,
+  plotly,
+  htmlwidgets,
+  htmltools,
+  DT,
+  jsonlite,
+  magrittr
 NeedsCompilation: no
