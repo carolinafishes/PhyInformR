@@ -1854,6 +1854,31 @@ informativeness.profile_html <- function(rate.vector, tree, codon = "FALSE",
   u_counts <- as.numeric(tab)
   vapply(times, function(tt) .pi_at_time_folded(u_rates, u_counts, tt), numeric(1))
 }
+## Dr.Townsend requested filter helper:
+## - "peak of the profile": time maximizing summed PI(t) across loci
+## - remove loci whose own PI peak time is BEFORE that profile peak time
+
+.pi_peak_time <- function(pi_curve, times) {
+  if (length(pi_curve) != length(times)) stop("pi_curve and times must have equal length")
+  times[which.max(pi_curve)]
+}
+
+.pi_profile_peak_time <- function(curves, times) {
+  prof <- Reduce(`+`, curves)
+  times[which.max(prof)]
+}
+
+.filter_loci_by_profile_peak <- function(curves, times) {
+  locus_peak_times <- vapply(curves, .pi_peak_time, numeric(1), times = times)
+  profile_peak_time <- .pi_profile_peak_time(curves, times)
+  keep <- locus_peak_times >= profile_peak_time
+  list(
+    profile_peak_time = profile_peak_time,
+    locus_peak_times  = locus_peak_times,
+    keep              = keep,
+    remove            = !keep
+  )
+}
 
 ## Main: multi-locus interactive HTML
 ## rates_list: named list of numeric vectors (each locus)
@@ -1861,7 +1886,9 @@ informativeness.profile_multi_html <- function(rates_list, tree,
                                                times = NULL,
                                                file = NULL,
                                                selfcontained = TRUE,
-                                               default_top_n = 50) {
+                                               default_top_n = 50,
+                                               filter_by_profile_peak = FALSE,
+                                               return_filter_info = TRUE) {
   
   if (!requireNamespace("plotly", quietly = TRUE)) stop("Please install.packages('plotly')")
   if (!requireNamespace("htmlwidgets", quietly = TRUE)) stop("Please install.packages('htmlwidgets')")
@@ -1884,6 +1911,7 @@ informativeness.profile_multi_html <- function(rates_list, tree,
   
   ## Compute PI curves (exact; algorithm unchanged)
   loci <- names(rates_list)
+  loci_all <- loci
   curves <- lapply(rates_list, .pi_curve_one_locus, times = times)
   
   ## Peak metrics per locus
@@ -1898,6 +1926,19 @@ informativeness.profile_multi_html <- function(rates_list, tree,
     peak_time = peak_time,
     stringsAsFactors = FALSE
   )
+  ## Dr.Townsend filter: remove loci peaking prior to the peak of the summed profile
+  filter_info <- .filter_loci_by_profile_peak(curves, times)
+  filter_info$loci <- loci_all
+  filter_info$kept_loci <- loci_all[filter_info$keep]
+  filter_info$removed_loci <- loci_all[filter_info$remove]
+  
+  if (isTRUE(filter_by_profile_peak)) {
+    keep_idx <- filter_info$keep
+    rates_list <- rates_list[keep_idx]
+    curves     <- curves[keep_idx]
+    loci       <- loci[keep_idx]
+    meta       <- meta[keep_idx, , drop = FALSE]
+  }
   
   ## Build plotly with one trace per locus (default show top N by peak_height)
   o_default <- order(meta$peak_height, decreasing = TRUE)
@@ -1922,8 +1963,15 @@ informativeness.profile_multi_html <- function(rates_list, tree,
     )
   }
   
-  ## Add a reference vertical line (default at median time)
-  t_ref0 <- stats::median(times)
+
+  ## Add a reference vertical line
+  ## - default remains median unless Jeff-filter is enabled
+  if (exists("filter_info") && isTRUE(filter_by_profile_peak)) {
+    t_ref0 <- filter_info$profile_peak_time
+  } else {
+    t_ref0 <- stats::median(times)
+  }
+  
   
   ## Plot layout + UX defaults
   p <- plotly::layout(
@@ -2102,6 +2150,11 @@ function(el, x){
         )
       ),
       
+      htmltools::tags$div(
+        id = "sn_window_status",
+        style = "margin-top:6px; color:#444; font-size:12px;",
+        "Tip: Click a tree dot to set the window. Shift-click a second dot to bind two bounds."
+      ),
       ## Top-N slider
       htmltools::tags$label(
         style = "display:flex; gap:8px; align-items:center;",
@@ -2151,7 +2204,7 @@ function(el, x){
     class = "pi-section",
     htmltools::tags$b("Current ranking (top N):"),
     htmltools::tags$table(
-      style="border-collapse: collapse; width: 100%; margin-top: 8px;",
+      style="border-collapse: collapse; width: 100%%; margin-top: 8px;",
       htmltools::tags$thead(
         htmltools::tags$tr(
           lapply(c("Rank","Locus","n_sites","peak_height","peak_time","peaked_by_ref"),
@@ -2161,12 +2214,38 @@ function(el, x){
       htmltools::tags$tbody(id="pi_rank_body")
     )
   )
+  ## ---- Page-level CSS----
+  style_tag <- htmltools::tags$style(htmltools::HTML("
+    html, body { height: auto; overflow-y: auto; margin: 0; padding: 0; }
+    .pi-controls {
+      position: sticky;
+      top: 0;
+      background: #ffffff;
+      z-index: 9999;
+      border-bottom: 1px solid #e5e5e5;
+      padding: 10px 12px;
+    }
+    .pi-controls label { margin-right: 12px; }
+    .pi-controls input[type=range] { vertical-align: middle; }
+    .pi-section { padding: 10px 12px; }
+    .pi-ranking { padding: 10px 12px; }
+    .pi-ranking table { border-collapse: collapse; width: 100%%; }
+    .pi-ranking th, .pi-ranking td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+  "))
   
   ## Build a single htmlwidget (required by saveWidget)
   p_widget <- htmlwidgets::onRender(p, js)
   
   ## Inject CSS + controls + ranking block into the widget's HTML
   p_widget <- htmlwidgets::prependContent(p_widget, style_tag, controls, ranking_block)
+  if (isTRUE(return_filter_info)) {
+    attr(p_widget, "filter_info") <- filter_info
+  }
+  
+  
+  if (isTRUE(return_filter_info)) {
+    attr(p_widget, "filter_info") <- filter_info
+  }
   
   ## Save as a standalone HTML file
   if (!is.null(file)) {
@@ -2299,9 +2378,12 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
       pw <- as.numeric(probs["P_wrong"])
       pc_mat[i, j] <- pc
       pw_mat[i, j] <- pw
-      sn_mat[i, j] <- pc - pw
+      sn_mat[i, j] <- pc - pw - (1 - pc + pw)   # arrow score
     }
   }
+  # ---- after filling sn_mat (after the double loop) ----
+  node_time <- as.numeric(nodes[, "d_node_time"])
+  sn_node   <- rowMeans(sn_mat, na.rm = TRUE)   # one value per edge/node
   
   ## ---- Tree coordinates (no device output) ----
   ape::plot.phylo(tree, plot = FALSE, show.tip.label = FALSE, direction = "leftwards")
@@ -2340,6 +2422,27 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
     x             = mid_x,
     y             = mid_y
   )
+  ## NEW: convenience vectors for JS
+  p_time_vec <- edge_meta$p_time
+  d_time_vec <- edge_meta$d_time
+  
+  ## ---- Map time (from present) -> tree x coordinate (for axis + window shading) ----
+  x_d <- xx[edge_meta$daughter_node]
+  t_d <- edge_meta$d_time
+  
+  fit_tx <- stats::lm(t_d ~ x_d)
+  a_tx <- unname(stats::coef(fit_tx)[1])   # intercept
+  b_tx <- unname(stats::coef(fit_tx)[2])   # slope
+  
+  if (!is.finite(b_tx) || abs(b_tx) < 1e-12) {  # fallback
+    a_tx <- 0
+    b_tx <- 1
+  }
+  
+  time_to_x <- function(t) (t - a_tx) / b_tx
+  
+  y0_tree <- min(yy, na.rm = TRUE) - 0.5
+  y1_tree <- max(yy, na.rm = TRUE) + 0.5
   
   ## ---- Initial selection (edge 1) ----
   edge0 <- 1L
@@ -2350,6 +2453,7 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
   ## ---- Helper: build top-N payload ----
   make_top_payload <- function(sn, pc, pw, loci, top_n = default_top_n, sort_mode = "abs_desc") {
     df <- data.frame(locus = loci, S = pc, N = pw, SN = sn, stringsAsFactors = FALSE)
+    df$sym <- ifelse(df$SN >= 0, "triangle-right", "triangle-left")
     if (sort_mode == "sn_desc") {
       df <- df[order(df$SN, decreasing = TRUE), ]
     } else if (sort_mode == "sn_asc") {
@@ -2366,9 +2470,9 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
   default_top_n <- min(as.integer(default_top_n), n_loci)
   top0 <- make_top_payload(sn0, pc0, pw0, loci, top_n = default_top_n, sort_mode = "abs_desc")
   
-  ## Lollipop stems as x,y with NA breaks
-  stem_x0 <- as.vector(rbind(top0$rank, top0$rank, rep(NA, nrow(top0))))
-  stem_y0 <- as.vector(rbind(rep(0, nrow(top0)), top0$SN, rep(NA, nrow(top0))))
+  ## Lollipop stems as x,y with NA breaks (horizontal: x=SN, y=rank)
+  stem_x0 <- as.vector(rbind(rep(0, nrow(top0)), top0$SN, rep(NA, nrow(top0))))
+  stem_y0 <- as.vector(rbind(top0$rank, top0$rank, rep(NA, nrow(top0))))
   
   ## ---- Build plotly: two-panel subplot (tree | lollipop) ----
   ## Panel A: tree
@@ -2397,11 +2501,12 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
     plotly::layout(
       xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
       yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
-      margin = list(l = 10, r = 10, t = 40, b = 10),
+      margin = list(l = 10, r = 25, t = 40, b = 10),
       title = list(text = "Phylogeny (click an edge midpoint)")
     )
   
-  ## Panel B: lollipop (baseline at 0, stems + dots)
+  ## Panel B: lollipop (horizontal: x=S-N, y=rank)
+  top0$sym <- ifelse(top0$SN >= 0, "triangle-right", "triangle-left")
   p_lol <- plotly::plot_ly() %>%
     plotly::add_trace(
       x = stem_x0, y = stem_y0,
@@ -2411,8 +2516,9 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
     ) %>%
     plotly::add_trace(
       data = top0,
-      x = ~rank, y = ~SN,
+      x = ~SN, y = ~rank,
       type = "scatter", mode = "markers",
+      marker = list(symbol = ~sym, size = 9),
       text = ~paste0(
         "locus=", locus,
         "<br>P_correct(S)=", signif(S, 6),
@@ -2423,32 +2529,66 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
       name = "S-N"
     ) %>%
     plotly::layout(
-      xaxis = list(title = "Locus (ranked)"),
-      yaxis = list(title = "Signal − Noise (S − N)"),
-      shapes = list(list(
-        type = "line",
-        x0 = 0.5, x1 = nrow(top0) + 0.5,
-        y0 = 0,   y1 = 0,
-        xref = "x", yref = "y",
-        line = list(width = 2)
-      )),
-      margin = list(l = 70, r = 10, t = 40, b = 55)
+      xaxis = list(title = "Signal − Noise (S − N)"),
+      yaxis = list(title = "Locus (ranked)", autorange = "reversed"),
+      margin = list(l = 90, r = 25, t = 40, b = 55)
     )
+
+  ## ---- Subplot: tree | lollipop (comparison windows are rendered dynamically below via JS) ----
+  tmin0 <- min(node_time, na.rm = TRUE)
+  tmax0 <- max(node_time, na.rm = TRUE)
+
+  p_top <- plotly::subplot(
+    p_tree, p_lol,
+    widths = c(0.45, 0.55),
+    shareY = FALSE, titleX = TRUE, titleY = TRUE,
+    margin = 0.06
+  )
+
+  p <- p_top
   
-  ## Subplot
-  p <- plotly::subplot(p_tree, p_lol,
-                       widths = c(0.45, 0.55),
-                       shareY = FALSE, titleX = TRUE, titleY = TRUE)
   
-  ## ---- Controls (sorting + top N + export) ----
+  ## ---- Tree time axis ticks (show "time", positioned at tree-x) ----
+  tick_time <- pretty(c(tmin0, tmax0), n = 5)
+  tick_time <- tick_time[tick_time >= tmin0 & tick_time <= tmax0]
+  tick_x <- time_to_x(tick_time)
+  tick_text <- format(signif(tick_time, 6), trim = TRUE, scientific = TRUE)
+
+  ## ---- Shapes: baseline only (shapes[0]); window overlays are managed in JS ----
+  baseline_shape <- list(
+    type = "line",
+    x0 = 0,   x1 = 0,
+    y0 = 0.5, y1 = nrow(top0) + 0.5,
+    xref = "x2", yref = "y2",
+    line = list(width = 2)
+  )
+
+  p <- plotly::layout(
+    p,
+    shapes = list(baseline_shape),
+    xaxis = list(
+      title = "Time from present",
+      tickmode = "array",
+      tickvals = tick_x,
+      ticktext = tick_text,
+      showticklabels = TRUE,
+      showline = TRUE,
+      zeroline = FALSE,
+      showgrid = FALSE
+    )
+  )
+  
+  
+  ## ---- Controls (sorting + top N + export + time window) ----
   controls <- htmltools::tags$div(
     class = "sn-controls",
-    style = "font-family: Arial, sans-serif;",
+    style = "font-family: Arial, sans-serif; margin-bottom: 12px;",
     htmltools::tags$div(
       style = "display:flex; gap:20px; align-items:center; flex-wrap: wrap;",
       htmltools::tags$label("Sort loci by: ",
                             htmltools::tags$select(
                               id = "sn_sort_mode",
+                              htmltools::tags$option(value = "var_desc", "variability (stratified/sd)", selected = "selected"),
                               htmltools::tags$option(value = "abs_desc", "abs(S−N) (desc)"),
                               htmltools::tags$option(value = "sn_desc", "S−N (desc)"),
                               htmltools::tags$option(value = "sn_asc",  "S−N (asc)")
@@ -2461,16 +2601,29 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
                             ),
                             htmltools::tags$span(id = "sn_top_n_label", default_top_n)
       ),
+      
+      htmltools::tags$button(
+        id = "sn_add_window",
+        type = "button",
+        style = "background:#5a3fa0; color:#fff; border:none; border-radius:4px; padding:6px 14px; cursor:pointer; font-size:13px;",
+        "+ Add Window"
+      ),
       htmltools::tags$button(
         id = "sn_export_svg",
         type = "button",
         "Export SVG (then print to PDF)"
       ),
       htmltools::tags$span(id = "sn_edge_label", style = "margin-left:10px;")
+    ),
+    htmltools::tags$div(
+      id = "sn_window_status",
+      style = "margin-top:6px; color:#444; font-size:12px;",
+      'Click "+ Add Window" to create a comparison window, then click tree edge dots to set time bounds.'
     )
   )
   
-  ## Page-level CSS (scroll + sticky header)
+  
+  ## Page-level CSS (scroll + sticky header + window panels)
   style_tag <- htmltools::tags$style(htmltools::HTML("
     html, body { height: auto; overflow-y: auto; margin: 0; padding: 0; }
     .sn-controls {
@@ -2484,142 +2637,647 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
     .sn-controls button { padding: 6px 10px; }
     .sn-controls label { margin-right: 12px; }
     .sn-controls input[type=range] { vertical-align: middle; }
+    #windows-container {
+      padding: 10px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .window-panel {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 6px 10px;
+      min-width: 180px;
+      max-width: 320px;
+      flex: 0 1 240px;
+      cursor: pointer;
+      background: #fafafa;
+      transition: box-shadow 0.15s;
+    }
+    #unified-violin-panel {
+      padding: 4px 12px 12px 12px;
+      border-top: 1px solid #e5e5e5;
+    }
+    .window-panel:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+    .window-panel-active { box-shadow: 0 0 0 2px #5a3fa0; background: #f5f0ff; }
+    .window-panel-header {
+      padding: 4px 8px;
+      margin-bottom: 4px;
+      border-radius: 3px;
+      font-size: 13px;
+      background: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
   "))
   
-  ## ---- JS: click edge -> update lollipop (stems + dots) ----
-  ## Trace indices inside subplot:
-  ## 0: tree lines, 1: tree click markers, 2: lollipop stems, 3: lollipop dots
-  ##
-  ## IMPORTANT:
-  ## - Avoid relayout loops: only update baseline length + annotation text.
-  ## - Scroll zoom disabled via config.
-  js <- sprintf("
-  function(el, x){
-    var gd = document.getElementById(el.id);
+  ## ---- JS: multi-window comparison ----
+  ## Trace indices: 0=tree lines, 1=tree click markers, 2=lollipop stems, 3=lollipop dots
+  ## Window violin plots are separate Plotly figures created dynamically below the main chart.
+  js_template <- "
+function(el, x){
+  var gd = document.getElementById(el.id);
 
-    var loci  = %s;
-    var pcMat = %s;
-    var pwMat = %s;
-    var snMat = %s;
+  var loci     = __LOCI__;
+  var pcMat    = __PCMAT__;
+  var pwMat    = __PWMAT__;
+  var snMat    = __SNMAT__;
 
-    var currentEdge = 1;
+  var nodeTime = __NODETIME__;
+  var snNode   = __SNNODE__;
 
-    function makeTop(edgeIdx){
-      var mode = document.getElementById('sn_sort_mode').value;
-      var topn = parseInt(document.getElementById('sn_top_n').value);
+  var pTime    = __PTIME__;
+  var dTime    = __DTIME__;
 
-      var sn = snMat[edgeIdx-1];
-      var pc = pcMat[edgeIdx-1];
-      var pw = pwMat[edgeIdx-1];
+  var mapA   = __MAPA__;
+  var mapB   = __MAPB__;
+  var y0Tree = __Y0TREE__;
+  var y1Tree = __Y1TREE__;
 
-      var arr = loci.map(function(name, i){
-        return {locus:name, S:pc[i], N:pw[i], SN:sn[i]};
-      });
+  function timeToX(t){ return (t - mapA) / mapB; }
 
-      if(mode === 'sn_desc'){
-        arr.sort(function(a,b){ return b.SN - a.SN; });
-      } else if(mode === 'sn_asc'){
-        arr.sort(function(a,b){ return a.SN - b.SN; });
-      } else {
-        arr.sort(function(a,b){ return Math.abs(b.SN) - Math.abs(a.SN); });
-      }
+  var validTimes = nodeTime.filter(function(v){ return v !== null && !isNaN(v); });
+  var tmin0 = Math.min.apply(null, validTimes);
+  var tmax0 = Math.max.apply(null, validTimes);
 
+  var currentEdge = 1;
+
+  // ---- Global S-N range for shared y-axis across all window violins ----
+  var _snAll = [];
+  for (var _si = 0; _si < snMat.length; _si++) {
+    for (var _sj = 0; _sj < snMat[_si].length; _sj++) {
+      var _sv = snMat[_si][_sj];
+      if (_sv !== null && !isNaN(_sv)) _snAll.push(_sv);
+    }
+  }
+  var _snMin = _snAll.length ? Math.min.apply(null, _snAll) : -1;
+  var _snMax = _snAll.length ? Math.max.apply(null, _snAll) : 1;
+  var _snPad = (_snMax - _snMin) * 0.08 || 0.1;
+  var snRange = [_snMin - _snPad, _snMax + _snPad];
+
+  // ---- Window color palettes ----
+  var WIN_COLORS = [
+    'rgba(128,0,128,0.85)',
+    'rgba(0,100,200,0.85)',
+    'rgba(0,160,50,0.85)',
+    'rgba(220,100,0,0.85)',
+    'rgba(200,0,50,0.85)',
+    'rgba(0,180,180,0.85)',
+    'rgba(150,0,200,0.85)',
+    'rgba(180,140,0,0.85)'
+  ];
+  var WIN_RECT_COLORS = [
+    'rgba(128,0,128,0.12)',
+    'rgba(0,100,200,0.12)',
+    'rgba(0,160,50,0.12)',
+    'rgba(220,100,0,0.12)',
+    'rgba(200,0,50,0.12)',
+    'rgba(0,180,180,0.12)',
+    'rgba(150,0,200,0.12)',
+    'rgba(180,140,0,0.12)'
+  ];
+
+  // ---- Multi-window state ----
+  var windows     = [];       // array of window objects (null = removed)
+  var activeWinIdx = -1;       // index of window being configured
+  var anchorEdge   = null;     // pending first-click anchor
+
+  // ---- Lollipop helpers (logic unchanged) ----
+  function makeTop(edgeIdx){
+    var modeEl = document.getElementById('sn_sort_mode');
+    var topEl  = document.getElementById('sn_top_n');
+    if(!modeEl || !topEl) return [];
+    var mode = modeEl.value;
+    var topn = parseInt(topEl.value);
+    var sn = snMat[edgeIdx-1];
+    var pc = pcMat[edgeIdx-1];
+    var pw = pwMat[edgeIdx-1];
+    var arr = loci.map(function(name, i){
+      return {locus:name, S:pc[i], N:pw[i], SN:sn[i], sym:(sn[i] >= 0 ? 'triangle-right' : 'triangle-left')};
+    });
+    if(mode === 'var_desc'){
+      arr.sort(function(a,b){ return a.SN - b.SN; });
       topn = Math.min(topn, arr.length);
-      arr = arr.slice(0, topn);
-      arr.forEach(function(d,i){ d.rank = i+1; });
-
-      return arr;
+      var selected = [];
+      for(var i = 0; i < topn; i++){
+        var qi = Math.floor((i / topn) * arr.length);
+        if(qi >= arr.length) qi = arr.length - 1;
+        selected.push(arr[qi]);
+      }
+      selected.sort(function(a,b){ return Math.abs(b.SN) - Math.abs(a.SN); });
+      selected.forEach(function(d,i){ d.rank = i+1; });
+      return selected;
+    } else if(mode === 'sn_desc'){
+      arr.sort(function(a,b){ return b.SN - a.SN; });
+    } else if(mode === 'sn_asc'){
+      arr.sort(function(a,b){ return a.SN - b.SN; });
+    } else {
+      arr.sort(function(a,b){ return Math.abs(b.SN) - Math.abs(a.SN); });
     }
+    topn = Math.min(topn, arr.length);
+    arr = arr.slice(0, topn);
+    arr.forEach(function(d,i){ d.rank = i+1; });
+    return arr;
+  }
 
-    function ensureAnno(){
-      var hasAnno = (gd.layout.annotations && gd.layout.annotations.length > 0);
-      if(!hasAnno){
-        Plotly.relayout(gd, {
-          annotations: [{
-            xref: 'paper', yref: 'paper',
-            x: 0.73, y: 1.05,
-            showarrow: false,
-            text: 'Per-locus S−N (edge 1)',
-            font: {size: 14}
-          }]
-        });
+  function edgesInWindow(tmin, tmax){
+    var edges = [];
+    for(var e=0; e<nodeTime.length; e++){
+      var tt = nodeTime[e];
+      if(tt !== null && !isNaN(tt) && tt >= tmin && tt <= tmax) edges.push(e);
+    }
+    return edges;
+  }
+
+  function makeTopFromWindow(tmin, tmax){
+    var modeEl = document.getElementById('sn_sort_mode');
+    var topEl  = document.getElementById('sn_top_n');
+    if(!modeEl || !topEl) return [];
+    var mode = modeEl.value;
+    var topn = parseInt(topEl.value);
+    var edges = edgesInWindow(tmin, tmax);
+    if(edges.length === 0) return [];
+    var arr = loci.map(function(name, j){
+      var vals = [], pcv = [], pwv = [];
+      for(var k=0; k<edges.length; k++){
+        var e  = edges[k];
+        var v  = snMat[e][j];
+        var pc = pcMat[e][j];
+        var pw = pwMat[e][j];
+        if(v  !== null && !isNaN(v))  vals.push(v);
+        if(pc !== null && !isNaN(pc)) pcv.push(pc);
+        if(pw !== null && !isNaN(pw)) pwv.push(pw);
+      }
+      if(vals.length === 0) return {locus:name, SN:NaN, SD:NaN, S:NaN, N:NaN, sym:'circle'};
+      var mean = vals.reduce(function(a,b){return a+b;},0) / vals.length;
+      var sd   = Math.sqrt(vals.reduce(function(a,b){return a+(b-mean)*(b-mean);},0) / vals.length);
+      var Smean = pcv.length ? pcv.reduce(function(a,b){return a+b;},0)/pcv.length : NaN;
+      var Nmean = pwv.length ? pwv.reduce(function(a,b){return a+b;},0)/pwv.length : NaN;
+      return {locus:name, SN:mean, SD:sd, S:Smean, N:Nmean, sym:(mean >= 0 ? 'triangle-right' : 'triangle-left')};
+    });
+    if(mode === 'var_desc'){
+      arr.sort(function(a,b){ return b.SD - a.SD; });
+    } else if(mode === 'sn_desc'){
+      arr.sort(function(a,b){ return b.SN - a.SN; });
+    } else if(mode === 'sn_asc'){
+      arr.sort(function(a,b){ return a.SN - b.SN; });
+    } else {
+      arr.sort(function(a,b){ return Math.abs(b.SN) - Math.abs(a.SN); });
+    }
+    topn = Math.min(topn, arr.length);
+    var top = arr.slice(0, topn);
+    top.forEach(function(d,i){ d.rank = i+1; });
+    top._nEdges = edges.length;
+    return top;
+  }
+
+  function applyLollipop(top, annoText, edgeLabelText){
+    if(!top || top.length === 0) return;
+    var stemX = [], stemY = [];
+    for(var i=0; i<top.length; i++){
+      stemX.push(0);          stemY.push(top[i].rank);
+      stemX.push(top[i].SN);  stemY.push(top[i].rank);
+      stemX.push(null);        stemY.push(null);
+    }
+    var dotX   = top.map(function(d){ return d.SN; });
+    var dotY   = top.map(function(d){ return d.rank; });
+    var dotSym = top.map(function(d){ return d.sym; });
+    var dotText = top.map(function(d){
+      var txt = 'locus=' + d.locus
+        + '<br>P_correct(S)=' + Number(d.S).toPrecision(6)
+        + '<br>P_wrong(N)='   + Number(d.N).toPrecision(6)
+        + '<br>Arrow='        + Number(d.SN).toPrecision(6);
+      if(d.SD !== undefined && !isNaN(d.SD)) txt += '<br>SD=' + Number(d.SD).toPrecision(6);
+      return txt;
+    });
+    Plotly.restyle(gd, {x:[stemX], y:[stemY]}, [2]);
+    Plotly.restyle(gd, {x:[dotX], y:[dotY], text:[dotText], 'marker.symbol':[dotSym]}, [3]);
+    Plotly.relayout(gd, {
+      'shapes[0].y0': 0.5,
+      'shapes[0].y1': (top.length + 0.5),
+      'annotations[0].text': annoText
+    });
+    var topLab = document.getElementById('sn_top_n_label');
+    if(topLab) topLab.innerText = top.length.toString();
+    var edgeLab = document.getElementById('sn_edge_label');
+    if(edgeLab) edgeLab.innerText = edgeLabelText;
+  }
+
+  function ensureAnno(){
+    var hasAnno = (gd.layout.annotations && gd.layout.annotations.length > 0);
+    if(!hasAnno){
+      Plotly.relayout(gd, {annotations: [{
+        xref:'paper', yref:'paper', x:0.73, y:1.05,
+        showarrow:false, text:'Per-locus Arrow score (edge 1)', font:{size:14}
+      }]});
+    }
+  }
+
+  function updateLollipop(edgeIdx){
+    currentEdge = edgeIdx;
+    var top = makeTop(edgeIdx);
+    if(top.length === 0) return;
+    applyLollipop(
+      top,
+      'Per-locus Arrow score (edge ' + edgeIdx + ')',
+      'Selected edge: ' + edgeIdx
+    );
+  }
+
+  function windowVals(tmin, tmax){
+    var vals = [];
+    for(var i=0; i<nodeTime.length; i++){
+      var tt = nodeTime[i];
+      if(tt === null || isNaN(tt)) continue;
+      if(tt >= tmin && tt <= tmax){
+        var v = snNode[i];
+        if(v !== null && !isNaN(v)) vals.push(v);
       }
     }
+    return vals;
+  }
 
-    function updateLollipop(edgeIdx){
-      currentEdge = edgeIdx;
+  function setStatus(msg){
+    var el = document.getElementById('sn_window_status');
+    if(el) el.innerText = msg;
+  }
 
-      var top = makeTop(edgeIdx);
+  // ---- Unified violin panel: vertical violins, shared y-axis, x = window center time ----
+  // Each window gets one violin trace placed at x = midpoint of its time range.
+  // All violins share snRange on the y-axis so distributions can be directly compared.
+  // The x-axis matches the tree time axis, giving pixel-level alignment.
+  function rebuildUnifiedViolin() {
+    var uDiv = document.getElementById('unified-violin-panel');
+    if (!uDiv) return;
+    var traces = [];
+    var activeWins = windows.filter(function(w){ return w !== null; });
+    if (activeWins.length === 0) {
+      Plotly.react(uDiv, [], {
+        height: 60,
+        margin: {l:60, r:20, t:20, b:20},
+        annotations: [{
+          xref:'paper', yref:'paper', x:0.5, y:0.5,
+          text:'No windows. Click \"+ Add Window\" to begin.',
+          showarrow:false, font:{size:13, color:'#888'}
+        }]
+      }, {displayModeBar:false});
+      return;
+    }
+    for (var i = 0; i < windows.length; i++) {
+      var win = windows[i];
+      if (!win) continue;
+      var midTime = (win.tmin + win.tmax) / 2;
+      var vals = windowVals(win.tmin, win.tmax);
+      if (vals.length === 0) continue;
+      // Width of violin proportional to window time span, with reasonable min/max
+      var winSpan  = Math.abs(win.tmax - win.tmin);
+      var treeSpan = tmax0 - tmin0 || 1;
+      var vWidth   = Math.max(winSpan * 0.8, treeSpan * 0.025);
+      traces.push({
+        y: vals,
+        x: Array(vals.length).fill(midTime),
+        type: 'violin',
+        orientation: 'v',
+        name: win.label,
+        fillcolor: win.color,
+        line: {color: win.color},
+        points: 'all',
+        jitter: 0.3,
+        pointpos: 0,
+        box: {visible: true},
+        meanline: {visible: true},
+        scalemode: 'width',
+        width: vWidth,
+        hovertemplate: win.label + '<br>S-N=%{y:.4f}<extra></extra>'
+      });
+    }
+    var layout = {
+      height: 240,
+      margin: {l: 65, r: 20, t: 36, b: 60},
+      xaxis: {
+        title: 'Time from present',
+        range: [tmin0 - (tmax0 - tmin0) * 0.03,
+                tmax0 + (tmax0 - tmin0) * 0.03],
+        showgrid: true,
+        zeroline: false
+      },
+      yaxis: {
+        title: 'S - N',
+        range: snRange,
+        zeroline: true,
+        zerolinewidth: 2,
+        zerolinecolor: '#888'
+      },
+      showlegend: true,
+      legend: {orientation: 'h', y: 1.08},
+      violingap: 0,
+      violingroupgap: 0
+    };
+    Plotly.react(uDiv, traces, layout,
+      {scrollZoom: false, displayModeBar: false});
+  }
 
-      var stemX = [];
-      var stemY = [];
-      for(var i=0; i<top.length; i++){
-        stemX.push(top[i].rank); stemY.push(0);
-        stemX.push(top[i].rank); stemY.push(top[i].SN);
-        stemX.push(null);        stemY.push(null);
+  // ---- Multi-window tree overlays ----
+  function rebuildTreeShapes(){
+    // shapes[0] = lollipop baseline; then 3 shapes per window (rect + 2 boundary lines)
+    var shapes = [{
+      type:'line', x0:0, x1:0, y0:0.5, y1:1.5,
+      xref:'x2', yref:'y2', line:{width:2}
+    }];
+    for(var i=0; i<windows.length; i++){
+      var win = windows[i];
+      if(!win) continue;
+      var xL = timeToX(Math.min(win.tmin, win.tmax));
+      var xR = timeToX(Math.max(win.tmin, win.tmax));
+      shapes.push({
+        type:'rect', x0:xL, x1:xR, y0:y0Tree, y1:y1Tree,
+        xref:'x', yref:'y', fillcolor:win.rectColor, line:{width:0}, layer:'below'
+      });
+      shapes.push({
+        type:'line', x0:xL, x1:xL, y0:y0Tree, y1:y1Tree,
+        xref:'x', yref:'y', line:{width:2, dash:'dot', color:win.color}
+      });
+      shapes.push({
+        type:'line', x0:xR, x1:xR, y0:y0Tree, y1:y1Tree,
+        xref:'x', yref:'y', line:{width:2, dash:'dot', color:win.color}
+      });
+    }
+    Plotly.relayout(gd, {shapes:shapes});
+  }
+
+  function rebuildTreeMarkerColors(){
+    var colors = new Array(nodeTime.length).fill('rgba(200,200,200,0.55)');
+    for(var i=0; i<windows.length; i++){
+      var win = windows[i];
+      if(!win) continue;
+      var lo = Math.min(win.tmin, win.tmax);
+      var hi = Math.max(win.tmin, win.tmax);
+      for(var j=0; j<nodeTime.length; j++){
+        var tt = nodeTime[j];
+        if(tt !== null && !isNaN(tt) && tt >= lo && tt <= hi) colors[j] = win.color;
       }
+    }
+    Plotly.restyle(gd, {'marker.color':[colors]}, [1]);
+  }
 
-      var dotX = top.map(function(d){ return d.rank; });
-      var dotY = top.map(function(d){ return d.SN; });
-      var dotText = top.map(function(d){
-        return 'locus=' + d.locus
-          + '<br>P_correct(S)=' + Number(d.S).toPrecision(6)
-          + '<br>P_wrong(N)=' + Number(d.N).toPrecision(6)
-          + '<br>S-N=' + Number(d.SN).toPrecision(6);
-      });
+  function updateMarkerSizes(){
+    var base = 7, big = 12;
+    var sizes = new Array(nodeTime.length).fill(base);
+    if(anchorEdge !== null) sizes[anchorEdge - 1] = big;
+    for(var i=0; i<windows.length; i++){
+      var win = windows[i];
+      if(!win) continue;
+      if(win.pairA !== null) sizes[win.pairA - 1] = big;
+      if(win.pairB !== null) sizes[win.pairB - 1] = big;
+    }
+    Plotly.restyle(gd, {'marker.size':[sizes]}, [1]);
+  }
 
-      // Update traces 2 and 3
-      Plotly.restyle(gd, {x:[stemX], y:[stemY]}, [2]);
-      Plotly.restyle(gd, {x:[dotX],  y:[dotY],  text:[dotText]}, [3]);
+  function updateWindowViolin(idx){
+    var win = windows[idx];
+    if(!win) return;
+    // Rebuild unified violin panel (replaces per-window individual violin)
+    rebuildUnifiedViolin();
+    // Sync lollipop with this window
+    var topW = makeTopFromWindow(win.tmin, win.tmax);
+    if(topW.length){
+      var nE = topW._nEdges || 0;
+      applyLollipop(
+        topW,
+        win.label + ': per-locus Arrow (nEdges=' + nE + ')',
+        win.label + ' edges: ' + nE
+      );
+    }
+  }
 
-      // Update baseline length and title annotation (no zoom/pan changes)
-      Plotly.relayout(gd, {
-        'shapes[0].x0': 0.5,
-        'shapes[0].x1': (top.length + 0.5),
-        'annotations[0].text': ('Per-locus S−N (edge ' + edgeIdx + ')')
-      });
+  function winLabel(n){
+    // n=0->A, n=25->Z, n=26->AA, ...
+    var s = '', m = n;
+    do {
+      s = String.fromCharCode(65 + m % 26) + s;
+      m = Math.floor(m / 26) - 1;
+    } while(m >= 0);
+    return 'Window ' + s;
+  }
 
-      document.getElementById('sn_top_n_label').innerText = top.length.toString();
-      document.getElementById('sn_edge_label').innerText  = 'Selected edge: ' + edgeIdx;
+  function setActivePanelStyle(idx){
+    document.querySelectorAll('.window-panel').forEach(function(el){
+      el.classList.remove('window-panel-active');
+    });
+    var panel = document.getElementById('win-panel-' + idx);
+    if(panel) panel.classList.add('window-panel-active');
+  }
+
+  // ---- Add a new comparison window ----
+  function addWindow(){
+    var colorIdx = 0;
+    for(var i=0; i<windows.length; i++){ if(windows[i] !== null) colorIdx++; }
+
+    var idx = windows.length;
+    var win = {
+      idx:       idx,
+      label:     winLabel(colorIdx),
+      tmin:      tmin0,
+      tmax:      tmax0,
+      color:     WIN_COLORS[colorIdx % WIN_COLORS.length],
+      rectColor: WIN_RECT_COLORS[colorIdx % WIN_RECT_COLORS.length],
+      pairA:     null,
+      pairB:     null
+    };
+    windows.push(win);
+    activeWinIdx = idx;
+    anchorEdge   = null;
+
+    var container = document.getElementById('windows-container');
+    if(!container) return;
+
+    var panelDiv = document.createElement('div');
+    panelDiv.className = 'window-panel';
+    panelDiv.id = 'win-panel-' + idx;
+    panelDiv.setAttribute('data-win-idx', String(idx));
+
+    var headerDiv = document.createElement('div');
+    headerDiv.className = 'window-panel-header';
+    headerDiv.style.borderLeft = '4px solid ' + win.color;
+    headerDiv.innerHTML =
+      '<span style=\"color:' + win.color + ';font-weight:bold;margin-right:6px;\">' + win.label + '</span>' +
+      '<span id=\"win-status-' + idx + '\" style=\"font-size:11px;color:#555;flex:1;\">Full range — click tree edges to set bounds</span>' +
+      '<button onclick=\"removeWindow(' + idx + ')\" style=\"margin-left:8px;padding:2px 8px;cursor:pointer;\">Remove</button>';
+    panelDiv.appendChild(headerDiv);
+
+    container.appendChild(panelDiv);
+
+    // Click panel body to activate this window
+    panelDiv.addEventListener('click', function(e){
+      if(e.target.tagName === 'BUTTON') return;
+      var wi = parseInt(panelDiv.getAttribute('data-win-idx'));
+      activeWinIdx = wi;
+      anchorEdge   = null;
+      setActivePanelStyle(wi);
+      setStatus('Active: ' + windows[wi].label + '. Click a tree edge dot to set bounds.');
+    });
+
+    // Rebuild unified violin panel (vertical, shared y-axis, x = window center time)
+    rebuildUnifiedViolin();
+
+    setActivePanelStyle(idx);
+    rebuildTreeShapes();
+    rebuildTreeMarkerColors();
+    setStatus(win.label + ' added. Click a tree edge dot to set bounds; Shift+click a second edge to span a range.');
+  }
+
+  // ---- Remove a window ----
+  window.removeWindow = function(idx){
+    windows[idx] = null;
+    var panel = document.getElementById('win-panel-' + idx);
+    if(panel) panel.parentNode.removeChild(panel);
+    if(activeWinIdx === idx){
+      activeWinIdx = -1;
+      for(var i=windows.length-1; i>=0; i--){
+        if(windows[i] !== null){ activeWinIdx = i; break; }
+      }
+      if(activeWinIdx >= 0) setActivePanelStyle(activeWinIdx);
+    }
+    anchorEdge = null;
+    rebuildTreeShapes();
+    rebuildTreeMarkerColors();
+    updateMarkerSizes();
+    rebuildUnifiedViolin();
+    if(activeWinIdx >= 0 && windows[activeWinIdx]){
+      setStatus('Active: ' + windows[activeWinIdx].label + '. Click a tree edge to adjust bounds.');
+    } else {
+      setStatus('No active window. Click \"+ Add Window\" to create one.');
+    }
+  };
+
+  // ---- Click handler ----
+  gd.on('plotly_click', function(ev){
+    if(!ev || !ev.points || ev.points.length === 0) return;
+    var pt = ev.points[0];
+    if(pt.curveNumber !== 1) return;
+
+    var edgeIdx = pt.customdata;
+    if(edgeIdx === undefined || edgeIdx === null) return;
+    edgeIdx = parseInt(edgeIdx);
+
+    updateLollipop(edgeIdx);
+
+    if(activeWinIdx < 0 || !windows[activeWinIdx]){
+      setStatus('No active window. Click \"+ Add Window\" first, or click a window panel to activate it.');
+      return;
     }
 
-    // Handle clicks: only respond to edge midpoint markers (trace 1)
-    gd.on('plotly_click', function(ev){
-      if(!ev || !ev.points || ev.points.length === 0) return;
-      var pt = ev.points[0];
-      if(pt.curveNumber !== 1) return;
-      var edgeIdx = pt.customdata;
-      if(edgeIdx === undefined || edgeIdx === null) return;
-      updateLollipop(parseInt(edgeIdx));
-    });
+    var win = windows[activeWinIdx];
 
-    // UI events
-    document.getElementById('sn_sort_mode').addEventListener('change', function(){
-      updateLollipop(currentEdge);
-    });
-    document.getElementById('sn_top_n').addEventListener('input', function(){
-      updateLollipop(currentEdge);
-    });
+    if(ev.event && ev.event.shiftKey && anchorEdge !== null){
+      var tA = dTime[anchorEdge - 1];
+      var tB = dTime[edgeIdx - 1];
+      if(tA !== null && !isNaN(tA) && tB !== null && !isNaN(tB)){
+        win.pairA = anchorEdge;
+        win.pairB = edgeIdx;
+        win.tmin  = Math.min(tA, tB);
+        win.tmax  = Math.max(tA, tB);
+        anchorEdge = null;
+        var statEl = document.getElementById('win-status-' + win.idx);
+        if(statEl) statEl.innerText = 'Bounded: edge ' + win.pairA + ' ↔ edge ' + win.pairB;
+        updateWindowViolin(activeWinIdx);
+        rebuildTreeShapes();
+        rebuildTreeMarkerColors();
+        updateMarkerSizes();
+        setStatus(win.label + ': bounded from edge ' + win.pairA + ' to edge ' + win.pairB + '.');
+      }
+      return;
+    }
 
-    // Export SVG (Route A)
-    document.getElementById('sn_export_svg').addEventListener('click', function(){
+    // Single click: set window to this edge span
+    win.tmin  = Math.min(pTime[edgeIdx-1], dTime[edgeIdx-1]);
+    win.tmax  = Math.max(pTime[edgeIdx-1], dTime[edgeIdx-1]);
+    win.pairA = null;
+    win.pairB = null;
+    anchorEdge = edgeIdx;
+
+    var statEl2 = document.getElementById('win-status-' + win.idx);
+    if(statEl2) statEl2.innerText = 'Edge ' + edgeIdx + ' selected — Shift+click another to span';
+
+    updateWindowViolin(activeWinIdx);
+    rebuildTreeShapes();
+    rebuildTreeMarkerColors();
+    updateMarkerSizes();
+    setStatus(win.label + ': edge ' + edgeIdx + ' set. Shift+click a second edge to span a range.');
+  });
+
+  // ---- UI control events ----
+  var sortEl = document.getElementById('sn_sort_mode');
+  if(sortEl){
+    sortEl.addEventListener('change', function(){
+      updateLollipop(currentEdge);
+      if(activeWinIdx >= 0 && windows[activeWinIdx]){
+        var w = windows[activeWinIdx];
+        var topW = makeTopFromWindow(w.tmin, w.tmax);
+        if(topW.length){
+          applyLollipop(topW, w.label + ': per-locus Arrow (nEdges=' + (topW._nEdges||0) + ')', w.label + ' edges: ' + (topW._nEdges||0));
+        }
+      }
+    });
+  }
+
+  var topEl = document.getElementById('sn_top_n');
+  if(topEl){
+    topEl.addEventListener('input', function(){ updateLollipop(currentEdge); });
+  }
+
+  var addBtn = document.getElementById('sn_add_window');
+  if(addBtn){ addBtn.addEventListener('click', addWindow); }
+
+  var exportBtn = document.getElementById('sn_export_svg');
+  if(exportBtn){
+    exportBtn.addEventListener('click', function(){
       Plotly.downloadImage(gd, {format:'svg', filename:'tree_signal_noise'});
     });
-
-    // Initialize
-    ensureAnno();
-    document.getElementById('sn_edge_label').innerText = 'Selected edge: 1';
-    updateLollipop(1);
   }
-  ",
-                jsonlite::toJSON(loci, auto_unbox = TRUE),
-                jsonlite::toJSON(unname(pc_mat), dataframe = "values", auto_unbox = TRUE),
-                jsonlite::toJSON(unname(pw_mat), dataframe = "values", auto_unbox = TRUE),
-                jsonlite::toJSON(unname(sn_mat), dataframe = "values", auto_unbox = TRUE)
-  )
-  
+
+  ensureAnno();
+  updateLollipop(1);
+  // Auto-create Window A on load
+  addWindow();
+}
+"
+
+js <- js_template
+
+# Ensure matrices are serialized as "list of rows":
+#   pcMat.length == n_edges
+#   pcMat[0].length == n_loci == length(loci)
+mat_to_rowlist <- function(M) {
+  stopifnot(is.matrix(M))
+  lapply(seq_len(nrow(M)), function(i) as.numeric(M[i, ]))
+}
+
+js <- sub("__LOCI__",     jsonlite::toJSON(loci, auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__PCMAT__",    jsonlite::toJSON(mat_to_rowlist(unname(pc_mat)), auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__PWMAT__",    jsonlite::toJSON(mat_to_rowlist(unname(pw_mat)), auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__SNMAT__",    jsonlite::toJSON(mat_to_rowlist(unname(sn_mat)), auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__NODETIME__", jsonlite::toJSON(node_time, auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__SNNODE__",   jsonlite::toJSON(sn_node, auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__PTIME__",    jsonlite::toJSON(p_time_vec, auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__DTIME__",    jsonlite::toJSON(d_time_vec, auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__MAPA__",     jsonlite::toJSON(a_tx,     auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__MAPB__",     jsonlite::toJSON(b_tx,     auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__Y0TREE__",   jsonlite::toJSON(y0_tree,  auto_unbox = TRUE), js, fixed = TRUE)
+js <- sub("__Y1TREE__",   jsonlite::toJSON(y1_tree,  auto_unbox = TRUE), js, fixed = TRUE)
+
   p_widget <- htmlwidgets::onRender(p, js)
+  windows_container <- htmltools::tags$div(id = "windows-container", style = "padding:10px 12px;")
+  unified_violin_panel <- htmltools::tags$div(
+    id = "unified-violin-panel",
+    htmltools::tags$div(
+      style = "font-family:Arial,sans-serif; font-size:12px; color:#555; margin-bottom:2px; padding-left:4px;",
+      "S - N distributions by window (shared axis, aligned to tree time)"
+    )
+  )
   p_widget <- htmlwidgets::prependContent(p_widget, style_tag, controls)
+  p_widget <- htmlwidgets::appendContent(p_widget, windows_container, unified_violin_panel)
   
   ## ---- Plotly config: avoid accidental zoom; keep focused interactions ----
   ## NOTE: do NOT set editable=TRUE here (causes drag handles / shape editing).
@@ -2643,3 +3301,20 @@ tree_signal_noise_multi_html <- function(rates_list, tree,
   }
   return(p_widget)
 }
+
+
+## ---- Jeff: export filtered loci list (and optionally new files) ----
+filter_loci_by_informativeness_profile_peak <- function(rates_list, times = NULL) {
+  if (is.null(times)) {
+    times <- exp(seq(log(1e-6), log(1), length.out = 200))  # 或者用你主函数里默认 times 逻辑
+  }
+  loci  <- names(rates_list)
+  curves <- lapply(rates_list, .pi_curve_one_locus, times = times)
+  fi <- .filter_loci_by_profile_peak(curves, times)
+  list(
+    profile_peak_time = fi$profile_peak_time,
+    kept_loci = loci[fi$keep],
+    removed_loci = loci[fi$remove]
+  )
+}
+
